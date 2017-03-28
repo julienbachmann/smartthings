@@ -8,4 +8,8 @@ To install your micro module, disconnect power supply, then wire the micro modul
 
 The smartthings app should automatically detect the new thing and ask you to set a name. You can also choose the switch type you are using: momentary, toggle or single button.
 
+When you click `done`, wait some seconds and roller shutter will automatically perform a calibration to set max and min boundaries.
+
+You can now use your roller shutter in smartthings app.
+
 
