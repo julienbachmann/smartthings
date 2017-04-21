@@ -3,7 +3,7 @@ metadata {
         capability "Sensor"
         capability "Actuator"
         
-        capability "Switch"
+		capability "Switch"
         capability "Switch Level"
         
         capability "Polling"
@@ -25,9 +25,11 @@ metadata {
     tiles(scale: 2) {
         multiAttributeTile(name:"mainTitle", type:"generic", width:6, height:4, canChangeIcon: true) {
             tileAttribute("device.openCloseStatus", key: "PRIMARY_CONTROL") {
-                attributeState "open", label:'Open', backgroundColor:"#ffa81e"
-                attributeState "middle", label:'Middle', backgroundColor:"#d45614"
-                attributeState "close", label:'Closed', backgroundColor:"#00a0dc"                
+	            attributeState "open", label:'Open', backgroundColor:"#ffa81e", action: "switch.off", nextState: "closing"
+	            attributeState "middle", label:'Middle', backgroundColor:"#d45614", action: "switch.on", nextState: "opening"
+	            attributeState "close", label:'Closed', backgroundColor:"#00a0dc", action: "switch.on", nextState: "opening" 
+				attributeState "opening", label:'Opening', backgroundColor:"#ffa81e", nextState: "closing"
+	    		attributeState "closing", label:'Closing', backgroundColor:"#00a0dc", nextState: "opening"                
             }
             tileAttribute("device.level", key: "SLIDER_CONTROL") {
                 attributeState "level", action:"switch level.setLevel", defaultState: true, icon:"st.Home.home9" 
@@ -75,61 +77,61 @@ def parse(String description) {
 def correctLevel(value) {
     def result = value 
     if (value == "off") {
-        result = 0;
+    	result = 0;
     }
     if (value == "on" ) {
       result = 100;
     }
     if (invert) {
-        result = 100 - result
+    	result = 100 - result
     }
     return result
 }
 
 def createOpenCloseStatusEvent(value) {
-    def theOpenCloseStatus = "middle"
+	def theOpenCloseStatus = "middle"
     if (value >= (openOffset ?: 95)) {
-        theOpenCloseStatus = "open"
+	    theOpenCloseStatus = "open"
     }
     if (value <= (closeOffset ?: 5)) {    
-        theOpenCloseStatus = "close"    
+	    theOpenCloseStatus = "close"    
     }
-    return createEvent(name: "openCloseStatus", value: theOpenCloseStatus, isStateChange: true)
+	return createEvent(name: "openCloseStatus", value: theOpenCloseStatus, isStateChange: true)
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
-    logger.debug("basic report ${cmd}")
+	logger.debug("basic report ${cmd}")
     def result = []
     if (cmd.value) {
-        def level = correctLevel(cmd.value)
+    	def level = correctLevel(cmd.value)
         result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
-        result << createOpenCloseStatusEvent(level)
+		result << createOpenCloseStatusEvent(level)
     }
     return result
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicSet cmd) {
-    logger.debug("basic set ${cmd}")
+	logger.debug("basic set ${cmd}")
     def result = []
     if (cmd.value) {
-        def level = correctLevel(cmd.value)
-        result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
-        result << createOpenCloseStatusEvent(level)
+    	def level = correctLevel(cmd.value)
+    	result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
+   		result << createOpenCloseStatusEvent(level)
     }
     return result
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.switchmultilevelv3.SwitchMultilevelStopLevelChange cmd) {
-    log.debug("switch stop event ${cmd}")
+	log.debug("switch stop event ${cmd}")
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.switchmultilevelv3.SwitchMultilevelReport cmd) {
-    log.debug("switch multi level report ${cmd.value}")
+	log.debug("switch multi level report ${cmd.value}")
     def result = []
     if (cmd.value != null) {
-        def level = correctLevel(cmd.value)
-        result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
-        result << createOpenCloseStatusEvent(level)
+	    def level = correctLevel(cmd.value)
+    	result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
+	   	result << createOpenCloseStatusEvent(level)
     }
     return result
 }
@@ -153,19 +155,19 @@ def zwaveEvent(physicalgraph.zwave.commands.meterv3.MeterReport cmd) {
 }
 
 def on() {
-    open()
+	open()
 }
 
 def off() {
-    close()
+	close()
 }
 
 def open() {
-    setLevel(100)
+	setLevel(100)
 }
 
 def close() {
-    setLevel(0)
+	setLevel(0)
 }
 
 def poll() {
@@ -178,7 +180,7 @@ def poll() {
 def refresh() {
     log.debug("refresh")
     delayBetween([    
-        zwave.switchBinaryV1.switchBinaryGet().format(),
+    	zwave.switchBinaryV1.switchBinaryGet().format(),
         zwave.switchMultilevelV3.switchMultilevelGet().format(),
         zwave.meterV2.meterGet(scale: 0).format(),
         zwave.meterV2.meterGet(scale: 2).format(),
@@ -187,7 +189,7 @@ def refresh() {
 
 def setLevel(level) {
     if (invert) {
-        level = 100 - level
+    	level = 100 - level
     }
     if(level > 99) level = 99
     log.debug("set level ${level}")
@@ -201,10 +203,10 @@ def configure() {
     log.debug("configure roller shutter")
     def switchTypeValue = 0
     if (switchType == "Toggle") {
-        switchTypeValue = 1
+    	switchTypeValue = 1
     }
     else if (switchType == "Single") {
-        switchTypeValue = 2
+    	switchTypeValue = 2
     }
     log.debug("Init switch type with ${switchTypeValue}")
     delayBetween([    
