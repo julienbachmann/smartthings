@@ -13,9 +13,11 @@ metadata {
         capability "Configuration"
 
         attribute "openCloseStatus", "enum", ["open", "middle", "close"]
+        attribute "syncStatus", "enum", ["syncing", "synced"]
         
         command "open"
-        command "close"
+        command "close"  
+        command "sync"
         
         
         fingerprint inClusters: "0x26,0x32"        
@@ -44,19 +46,59 @@ metadata {
         standardTile("refresh", "device.switch", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
             state "default", label:"Refresh", action:"refresh.refresh", icon:"st.secondary.refresh-icon"
         }        
-        standardTile("reset", "device.energy", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
-            state "default", action:"configuration.configure", icon:"st.secondary.configure" 
+        standardTile(name: "calibrate", width: 2, height: 2, decoration: "flat") {
+            state "default", action:"configuration.configure", label:"Calibrate", backgroundColor:"#0000a8"
         }
+        standardTile("sync", "device.syncStatus", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
+            state "default", action:"sync" , label:"Sync", backgroundColor:"#00a800"
+            state "synced", action:"sync" , label:"Sync", backgroundColor:"#00a800"
+            state "syncing" , label:"Syncing", backgroundColor:"#a8a800"
+        }        
         main(["mainTitle"])
-        details(["mainTitle", "power", "energy", "refresh", "reset"])        
+        details(["mainTitle", "power", "energy", "refresh", "calibrate", "sync"])        
     }
     
     preferences {
         input name: "invert", type: "bool", title: "Invert up/down", description: "Invert up and down actions"        
-        input name: "switchType", type: "enum", title: "Switch type", options: ["Momentary", "Toggle", "Single"], description: "The witch type used with this controller", required: true        
         input name: "openOffset", type: "decimal", title: "Open offset", description: "The percentage from which shutter is displayerd as open"        
         input name: "closeOffset", type: "decimal", title: "Close offset", description: "The percentage from which shutter is displayerd as close"                
-    }
+        section {
+            input (
+                type: "paragraph",
+                element: "paragraph",
+                title: "DEVICE PARAMETERS:",
+                description: "Device parameters are used to customise the physical device. " +
+                             "Refer to the product documentation for a full description of each parameter."
+            )
+
+            getParamsMd().findAll( {!it.readonly} ).each { // Exclude readonly parameters.
+
+            def lb = (it.description.length() > 0) ? "\n" : ""
+
+                switch(it.type) {
+                    case "number":
+                    input (
+                        name: "configParam${it.id}",
+                        title: "#${it.id}: ${it.name}: \n" + it.description + lb +"Default Value: ${it.defaultValue}",
+                        type: it.type,
+                        range: it.range,
+                        required: it.required
+                    )
+                    break
+
+                    case "enum":
+                    input (
+                        name: "configParam${it.id}",
+                        title: "#${it.id}: ${it.name}: \n" + it.description + lb + "Default Value: ${it.defaultValue}",
+                        type: it.type,
+                        options: it.options,
+                        required: it.required
+                    )
+                    break
+                }
+            }
+        } // section
+	}
 }
 
 def parse(String description) {
@@ -102,7 +144,7 @@ def createOpenCloseStatusEvent(value) {
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
 	logger.debug("basic report ${cmd}")
     def result = []
-    if (cmd.value) {
+    if (cmd.value != null) {
     	def level = correctLevel(cmd.value)
         result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
 		result << createOpenCloseStatusEvent(level)
@@ -154,6 +196,14 @@ def zwaveEvent(physicalgraph.zwave.commands.meterv3.MeterReport cmd) {
     }
 }
 
+def zwaveEvent(physicalgraph.zwave.commands.configurationv1.ConfigurationReport cmd) {
+    log.debug("zwaveEvent(): Configuration Report received: ${cmd}")
+}
+
+def updated() {
+    setSynced();
+}
+
 def on() {
 	open()
 }
@@ -201,19 +251,104 @@ def setLevel(level) {
 
 def configure() {
     log.debug("configure roller shutter")
-    def switchTypeValue = 0
-    if (switchType == "Toggle") {
-    	switchTypeValue = 1
-    }
-    else if (switchType == "Single") {
-    	switchTypeValue = 2
-    }
-    log.debug("Init switch type with ${switchTypeValue}")
     delayBetween([    
-        zwave.configurationV1.configurationSet(parameterNumber: 14, size: 1, scaledConfigurationValue: switchTypeValue).format(),             
         zwave.configurationV1.configurationSet(parameterNumber: 29, size: 1, scaledConfigurationValue: 1).format(),  // start calibration            
         zwave.switchMultilevelV1.switchMultilevelGet().format(),
         zwave.meterV2.meterGet(scale: 0).format(),
         zwave.meterV2.meterGet(scale: 2).format(),
     ], 500)   
+}
+
+def sync() {
+    log.debug("sync roller shutter")
+    def cmds = []
+    sendEvent(name: "syncStatus", value: "syncing", isStateChange: true)
+    getParamsMd().findAll( {!it.readonly} ).each { // Exclude readonly parameters.
+		if (settings."configParam${it.id}" != null) {
+        	cmds << zwave.configurationV1.configurationSet(parameterNumber: it.id, size: it.size, scaledConfigurationValue: settings."configParam${it.id}".toInteger()).format()
+            cmds << zwave.configurationV1.configurationGet(parameterNumber: it.id).format()
+        }
+    }
+    log.debug("send cmds ${cmds}")
+    runIn(0.5 * cmds.size(), setSynced)
+    delayBetween(cmds, 500)
+}
+
+def setSynced() {
+    log.debug("Synced")
+    sendEvent(name: "syncStatus", value: "synced", isStateChange: true)
+}
+
+private getParamsMd() {
+    return [
+        [id:  3, size: 1, type: "number", range: "0..1", defaultValue: 0, required: false, readonly: false,
+         name: "Reports type",
+         description: "0 – Blind position reports sent to the main controller using Z-Wave Command Class.\n" +
+					  "1 - Blind position reports sent to the main controller using Fibar Command Class.\n" +
+                      "Parameters value shoud be set to 1 if the module operates in Venetian Blind mode."],
+        [id:  10, size: 1, type: "number", range: "0..1", defaultValue: 0, required: false, readonly: false,
+         name: "Roller Shutter operating modes",
+         description: "0 - Roller Blind Mode, without positioning\n" +
+		              "1 - Roller Blind Mode, with positioning\n" +
+                      "2 - Venetian Blind Mode, with positioning\n" +
+                      "3 - Gate Mode, without positioning\n" +
+                      "4 - Gate Mode, with positioning"],   
+        [id: 12, size:2, type: "number", range: "0..65535", defaultValue: 0, required: false, readonly: false, 
+         name: "Time of full turn of the slat",
+         description: "In Venetian Blind mode (parameter 10 set to 2) the parameter determines time of full turn of the slats.\n" +
+                      "In Gate Mode (parameter 10 set to 3 or 4) the parameter defines the COUNTDOWN time, i.e. the time period after which an open gate starts closing. In any other operating mode the parameter value is irrelevant.\n" +
+					  "Value of 0 means the gate will not close automatically.\n" + 
+					  "Available settings: 0-65535 (0 - 655,35s)\n" +
+					  "Default setting: 150 (1,5 s)"],
+        [id: 13, size:1, type: "number", range: "0..2", defaultValue: 0, required: false, readonly: false, 
+         name: "Set slats back to previous position",
+         description: "In Venetian Blind Mode (parameter 10 set to 2) the parameter influences slats positioning in various situations. In any other operating mode the parameter value is irrelevant.\n" +
+                      "0 - Slats return to previously set position only in case of the main controller operation\n" +
+					  "1 - Slats return to previously set position in case of the main controller operation, momentary switch operation, or when the limit switch is reached.\n" + 
+					  "2 - Slats return to previously set position in case of the main controller operation, momentary switch operation, when the limit switch is reached or after " +
+					  " receiving a “STOP” control frame (Switch Multilevel Stop)."],
+        [id: 14, size:1, type: "number", range: "0..2", defaultValue: 0, required: false, readonly: false, 
+         name: "Switch type",
+         description: "The parameter settings are relevant for Roller Blind Mode and Venetian Blind Mode (parameter 10 set to 0, 1, 2).\n" +
+                      "0 - Momentary switches\n" +
+					  "1 - Toggle switches\n" + 
+					  "2 - Single, momentary switch. (The switch should be connected to S1 terminal)"],  
+        [id: 18, size:1, type: "number", range: "0..255", defaultValue: 0, required: false, readonly: false, 
+         name: "Motor operation detection.",
+         description: "Power threshold to be interpreted as reaching a limit switch. \n" +
+					  "Available settings: 0 - 255 (1-255 W)\n" +
+					  "The value of 0 means reaching a limit switch will not be detected \n" +
+					  "Default setting: 10 (10W)."],
+        [id: 22, size:2, type: "number", range: "0..65535", defaultValue: 0, required: false, readonly: false, 
+         name: "Motor operation time.",
+         description: "Time period for the motor to continue operation. \n" +
+					  "Available settings: 0 – 65535 (0 – 65535s)\n" +
+					  "The value of 0 means the function is disabled.\n" +
+					  "Default setting: 240 (240s. – 4 minutes)"],                 
+        [id: 30, size:1, type: "number", range: "0..2", defaultValue: 0, required: false, readonly: false, 
+         name: "Response to general alarm",
+         description: "0 - No reaction.\n" +
+					  "1 - Open blind.\n" +
+					  "2 - Close blind."],
+        [id: 31, size:1, type: "number", range: "0..2", defaultValue: 0, required: false, readonly: false, 
+         name: "Response to flooding alarm",
+         description: "0 - No reaction.\n" +
+					  "1 - Open blind.\n" +
+					  "2 - Close blind."],
+        [id: 32, size:1, type: "number", range: "0..2", defaultValue: 0, required: false, readonly: false, 
+         name: "Response to smoke, CO or CO2 alarm",
+         description: "0 - No reaction.\n" +
+					  "1 - Open blind.\n" +
+					  "2 - Close blind."],
+        [id: 33, size:1, type: "number", range: "0..2", defaultValue: 0, required: false, readonly: false, 
+         name: "Response to temperature alarm",
+         description: "0 - No reaction.\n" +
+					  "1 - Open blind.\n" +
+					  "2 - Close blind."],
+        [id: 35, size:1, type: "number", range: "0..2", defaultValue: 0, required: false, readonly: false, 
+         name: "Managing slats in response to alarm.",
+         description: "0 - Do not change slats position - slats return to the last set position\n" +
+					  "1 - Set slats to their extreme position"]
+                      
+    ]
 }
