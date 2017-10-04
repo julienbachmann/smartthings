@@ -286,7 +286,7 @@ private getParamsMd() {
          description: "0 – Blind position reports sent to the main controller using Z-Wave Command Class.\n" +
 					  "1 - Blind position reports sent to the main controller using Fibar Command Class.\n" +
                       "Parameters value shoud be set to 1 if the module operates in Venetian Blind mode."],
-        [id:  10, size: 1, type: "number", range: "0..1", defaultValue: 0, required: false, readonly: false,
+        [id:  10, size: 1, type: "number", range: "0..4", defaultValue: 0, required: false, readonly: false,
          name: "Roller Shutter operating modes",
          description: "0 - Roller Blind Mode, without positioning\n" +
 		              "1 - Roller Blind Mode, with positioning\n" +
