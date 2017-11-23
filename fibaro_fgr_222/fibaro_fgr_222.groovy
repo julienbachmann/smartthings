@@ -226,10 +226,8 @@ def privateOpen() {
     def cmds = []
     def currentWindowShade = device.currentValue('windowShade')
     if (currentWindowShade == "opening" || currentWindowShade == "closing") {
-        log.debug("STOP")
-        // I do not know what command to send to stop the roller shutter :-(
-        cmds << zwave.basicV1.basicSet(value: 0xF0).format()
-        cmds << zwave.basicV1.basicGet().format()
+        log.debug("SHOULD STOP. BUT I DO NOT KNOW HOW :-(")
+        cmds << zwave.basicV1.basicSet(value: 0xFF).format()
     }
     else {
         cmds << zwave.basicV1.basicSet(value: 0xFF).format()
@@ -243,9 +241,8 @@ def privateClose() {
     def cmds = []
     def currentWindowShade = device.currentValue('windowShade')
     if (currentWindowShade == "closing" || currentWindowShade == "opening") {
-        log.debug("STOP")
-        cmds << zwave.basicV1.basicSet(value: 0xF0).format()
-        cmds << zwave.basicV1.basicGet().format()
+        log.debug("SHOULD STOP. BUT I DO NOT KNOW HOW :-(")
+        cmds << zwave.basicV1.basicSet(value: 0).format()
     }
     else {
         cmds << zwave.basicV1.basicSet(value: 0).format()
@@ -263,7 +260,7 @@ def poll() {
     delayBetween([
         zwave.meterV2.meterGet(scale: 0).format(),
         zwave.meterV2.meterGet(scale: 2).format(),
-    ], 1000)
+], 1000)
 }
 
 def refresh() {
@@ -273,7 +270,7 @@ def refresh() {
         zwave.switchMultilevelV3.switchMultilevelGet().format(),
         zwave.meterV2.meterGet(scale: 0).format(),
         zwave.meterV2.meterGet(scale: 2).format(),
-    ], 500)
+], 500)
 }
 
 def setLevel(level) {
