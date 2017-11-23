@@ -5,6 +5,7 @@ metadata {
         
 		capability "Switch"
         capability "Switch Level"
+        capability "Window Shade"
         
         capability "Polling"
         capability "Power Meter"
@@ -12,29 +13,24 @@ metadata {
         capability "Refresh"
         capability "Configuration"
 
-        attribute "openCloseStatus", "enum", ["open", "middle", "close"]
         attribute "syncStatus", "enum", ["syncing", "synced"]
-        
-        command "open"
-        command "close"  
+         
         command "sync"
         
-        
         fingerprint inClusters: "0x26,0x32"        
-
     }
 
     tiles(scale: 2) {
         multiAttributeTile(name:"mainTitle", type:"generic", width:6, height:4, canChangeIcon: true) {
-            tileAttribute("device.openCloseStatus", key: "PRIMARY_CONTROL") {
-	            attributeState "open", label:'Open', backgroundColor:"#ffa81e", action: "switch.off", nextState: "closing"
-	            attributeState "middle", label:'Middle', backgroundColor:"#d45614", action: "switch.on", nextState: "opening"
-	            attributeState "close", label:'Closed', backgroundColor:"#00a0dc", action: "switch.on", nextState: "opening" 
-				attributeState "opening", label:'Opening', backgroundColor:"#ffa81e", nextState: "closing"
-	    		attributeState "closing", label:'Closing', backgroundColor:"#00a0dc", nextState: "opening"                
+            tileAttribute("device.windowShade", key: "PRIMARY_CONTROL") {
+	            attributeState "open", label:'Open', backgroundColor:"#ffa81e", action: "close", nextState: "closing"
+	            attributeState "partially open", label:'Partial', backgroundColor:"#d45614", action: "open", nextState: "opening"
+	            attributeState "closed", label:'Closed', backgroundColor:"#00a0dc", action: "open", nextState: "opening" 
+				attributeState "opening", label:'Opening', backgroundColor:"#ffa81e", action: "open", nextState: "partially open" 
+	    		attributeState "closing", label:'Closing', backgroundColor:"#00a0dc", action: "close", nextState: "partially open" 
             }
             tileAttribute("device.level", key: "SLIDER_CONTROL") {
-                attributeState "level", action:"switch level.setLevel", defaultState: true, icon:"st.Home.home9" 
+                attributeState "level", action:"setLevel", defaultState: true, icon:"st.Home.home9" 
             }            
         }
         valueTile("power", "device.power", width: 2, height: 2) {
@@ -44,24 +40,32 @@ metadata {
             state "default", label:'${currentValue} kWh'
         }
         standardTile("refresh", "device.switch", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
-            state "default", label:"Refresh", action:"refresh.refresh", icon:"st.secondary.refresh-icon"
+            state "default", label:"Refresh", action:"refresh", icon:"st.secondary.refresh-icon"
         }        
         standardTile(name: "calibrate", width: 2, height: 2, decoration: "flat") {
-            state "default", action:"configuration.configure", label:"Calibrate", backgroundColor:"#0000a8"
+            state "default", action:"configure", label:"Calibrate", backgroundColor:"#0000a8"
         }
+        standardTile(name: "up", width: 2, height: 2, decoration: "flat") {
+            state "default", action:"open", icon:"https://raw.githubusercontent.com/julienbachmann/smartthings/master/fibaro_fgr_222/up.png?v=3"
+        }
+        standardTile(name: "down", width: 2, height: 2, decoration: "flat") {
+            state "default", action:"close", icon:"https://raw.githubusercontent.com/julienbachmann/smartthings/master/fibaro_fgr_222/down.png?v=3"
+        }        
         standardTile("sync", "device.syncStatus", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
             state "default", action:"sync" , label:"Sync", backgroundColor:"#00a800"
             state "synced", action:"sync" , label:"Sync", backgroundColor:"#00a800"
             state "syncing" , label:"Syncing", backgroundColor:"#a8a800"
         }        
         main(["mainTitle"])
-        details(["mainTitle", "power", "energy", "refresh", "calibrate", "sync"])        
+        details(["mainTitle", "up", "power", "refresh", "down", "sync", "calibrate"])        
     }
     
     preferences {
         input name: "invert", type: "bool", title: "Invert up/down", description: "Invert up and down actions"        
         input name: "openOffset", type: "decimal", title: "Open offset", description: "The percentage from which shutter is displayerd as open"        
         input name: "closeOffset", type: "decimal", title: "Close offset", description: "The percentage from which shutter is displayerd as close"                
+        input name: "offset", type: "decimal", title: "offset", description: "This offset allow to correct the value returned by the device so it match real value"                
+        
         section {
             input (
                 type: "paragraph",
@@ -124,21 +128,22 @@ def correctLevel(value) {
     if (value == "on" ) {
       result = 100;
     }
+    result = result - (offset ?: 0)
     if (invert) {
     	result = 100 - result
     }
     return result
 }
 
-def createOpenCloseStatusEvent(value) {
-	def theOpenCloseStatus = "middle"
+def createWindowShadeEvent(value) {
+	def theWindowShade = "partially open"
     if (value >= (openOffset ?: 95)) {
-	    theOpenCloseStatus = "open"
+	    theWindowShade = "open"
     }
     if (value <= (closeOffset ?: 5)) {    
-	    theOpenCloseStatus = "close"    
+	    theWindowShade = "closed"    
     }
-	return createEvent(name: "openCloseStatus", value: theOpenCloseStatus, isStateChange: true)
+	return createEvent(name: "windowShade", value: theWindowShade, isStateChange: true)
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
@@ -147,24 +152,9 @@ def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
     if (cmd.value != null) {
     	def level = correctLevel(cmd.value)
         result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
-		result << createOpenCloseStatusEvent(level)
+		result << createWindowShadeEvent(level)
     }
     return result
-}
-
-def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicSet cmd) {
-	logger.debug("basic set ${cmd}")
-    def result = []
-    if (cmd.value) {
-    	def level = correctLevel(cmd.value)
-    	result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
-   		result << createOpenCloseStatusEvent(level)
-    }
-    return result
-}
-
-def zwaveEvent(physicalgraph.zwave.commands.switchmultilevelv3.SwitchMultilevelStopLevelChange cmd) {
-	log.debug("switch stop event ${cmd}")
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.switchmultilevelv3.SwitchMultilevelReport cmd) {
@@ -173,7 +163,7 @@ def zwaveEvent(physicalgraph.zwave.commands.switchmultilevelv3.SwitchMultilevelR
     if (cmd.value != null) {
 	    def level = correctLevel(cmd.value)
     	result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
-	   	result << createOpenCloseStatusEvent(level)
+	   	result << createWindowShadeEvent(level)
     }
     return result
 }
@@ -213,11 +203,60 @@ def off() {
 }
 
 def open() {
-	setLevel(100)
+	logger.debug("open")    
+	if (invert) {
+	    return privateClose()
+    }
+    else {
+	    return privateOpen() 
+    }
 }
 
 def close() {
-	setLevel(0)
+	logger.debug("close")    
+	if (invert) {
+	    return privateOpen() 
+    }
+    else {
+	    return privateClose()
+    }
+}
+
+def privateOpen() {
+	    def cmds = []
+	    def currentWindowShade = device.currentValue('windowShade')
+		if (currentWindowShade == "opening" || currentWindowShade == "closing") {
+	        log.debug("STOP")
+            // I do not know what command to send to stop the roller shutter :-(
+        	cmds << zwave.basicV1.basicSet(value: 0xF0).format()        
+		    cmds << zwave.basicV1.basicGet().format()        
+	    }
+	    else {
+	        cmds << zwave.basicV1.basicSet(value: 0xFF).format()
+	    	sendEvent(name: "windowShade", value: invert ? "closing" : "opening", isStateChange: true)
+    	}
+	    log.debug("open: ${cmds}")
+    	return delayBetween(cmds, 500)  
+}
+
+def privateClose() {
+	    def cmds = []
+		def currentWindowShade = device.currentValue('windowShade')
+		if (currentWindowShade == "closing" || currentWindowShade == "opening") {
+    	    log.debug("STOP")
+        	cmds << zwave.basicV1.basicSet(value: 0xF0).format()
+	        cmds << zwave.basicV1.basicGet().format()                
+    	}
+	    else {
+    	    cmds << zwave.basicV1.basicSet(value: 0).format()
+	    	sendEvent(name: "windowShade", value: invert ? "opening": "closing", isStateChange: true)              
+	    }
+    	log.debug("close: ${cmds}")
+	    return delayBetween(cmds, 500)   
+}
+
+def presetPosition() {
+	setLevel(50)
 }
 
 def poll() {
@@ -242,6 +281,10 @@ def setLevel(level) {
     	level = 100 - level
     }
     if(level > 99) level = 99
+	if (level <= (openOffset ?: 95) && level >= (closeOffset ?: 5)) {
+    	level = level - (offset ?: 0)
+	}    
+    
     log.debug("set level ${level}")
     delayBetween([
         zwave.basicV1.basicSet(value: level).format(),
@@ -348,7 +391,13 @@ private getParamsMd() {
         [id: 35, size:1, type: "number", range: "0..2", defaultValue: 0, required: false, readonly: false, 
          name: "Managing slats in response to alarm.",
          description: "0 - Do not change slats position - slats return to the last set position\n" +
-					  "1 - Set slats to their extreme position"]
+					  "1 - Set slats to their extreme position"],
+        [id: 40, size:1, type: "number", range: "0..2", defaultValue: 0, required: false, readonly: false, 
+         name: "Power reports",
+         description: "Power level change that will result in new power value report being sent." +
+                      "The parameter defines a change that needs to occur in order to trigger the report. The value is a percentage of the previous report.\n" +
+					  "Power report threshold available settings: 1-100 (1-100%).\n" +
+					  "Value of 0 means the reports are turned off."]                      
                       
     ]
 }
