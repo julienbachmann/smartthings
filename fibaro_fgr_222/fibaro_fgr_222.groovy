@@ -16,6 +16,7 @@ metadata {
         attribute "syncStatus", "enum", ["syncing", "synced"]
 
         command "sync"
+        command "stop"        
 
         fingerprint inClusters: "0x26,0x32"
     }
@@ -26,8 +27,8 @@ metadata {
                 attributeState "open", label:'Open', backgroundColor:"#ffa81e", action: "close", nextState: "closing"
                 attributeState "partially open", label:'Partial', backgroundColor:"#d45614", action: "open", nextState: "opening"
                 attributeState "closed", label:'Closed', backgroundColor:"#00a0dc", action: "open", nextState: "opening"
-                attributeState "opening", label:'Opening', backgroundColor:"#ffa81e", action: "open", nextState: "partially open"
-                attributeState "closing", label:'Closing', backgroundColor:"#00a0dc", action: "close", nextState: "partially open"
+                attributeState "opening", label:'Opening', backgroundColor:"#ffa81e", action: "stop", nextState: "partially open"
+                attributeState "closing", label:'Closing', backgroundColor:"#00a0dc", action: "stop", nextState: "partially open"
             }
             tileAttribute("device.level", key: "SLIDER_CONTROL") {
                 attributeState "level", action:"setLevel", defaultState: true, icon:"st.Home.home9"
@@ -202,8 +203,21 @@ def off() {
     close()
 }
 
+def stop() {
+    def cmds = []
+    logger.debug("stop")
+	cmds << zwave.switchMultilevelV1.switchMultilevelStopLevelChange().format()
+    return delayBetween(cmds, 500)
+}
+
 def open() {
     logger.debug("open")
+    def currentWindowShade = device.currentValue('windowShade')
+    if (currentWindowShade == "opening" || currentWindowShade == "closing") {
+        sendEvent(name: "windowShade", value: "partially open")
+        return stop()        
+    }
+    sendEvent(name: "windowShade", value: "opening")
     if (invert) {
         return privateClose()
     }
@@ -214,6 +228,12 @@ def open() {
 
 def close() {
     logger.debug("close")
+    def currentWindowShade = device.currentValue('windowShade')
+    if (currentWindowShade == "opening" || currentWindowShade == "closing") {
+        sendEvent(name: "windowShade", value: "partially open")
+        return stop()        
+    }    
+    sendEvent(name: "windowShade", value: "closing")    
     if (invert) {
         return privateOpen()
     }
@@ -224,31 +244,15 @@ def close() {
 
 def privateOpen() {
     def cmds = []
-    def currentWindowShade = device.currentValue('windowShade')
-    if (currentWindowShade == "opening" || currentWindowShade == "closing") {
-        log.debug("SHOULD STOP. BUT I DO NOT KNOW HOW :-(")
-        cmds << zwave.basicV1.basicSet(value: 0xFF).format()
-    }
-    else {
-        cmds << zwave.basicV1.basicSet(value: 0xFF).format()
-        sendEvent(name: "windowShade", value: invert ? "closing" : "opening", isStateChange: true)
-    }
-    log.debug("open: ${cmds}")
+    cmds << zwave.basicV1.basicSet(value: 0xFF).format()
+    log.debug("send CMD: ${cmds}")
     return delayBetween(cmds, 500)
 }
 
 def privateClose() {
     def cmds = []
-    def currentWindowShade = device.currentValue('windowShade')
-    if (currentWindowShade == "closing" || currentWindowShade == "opening") {
-        log.debug("SHOULD STOP. BUT I DO NOT KNOW HOW :-(")
-        cmds << zwave.basicV1.basicSet(value: 0).format()
-    }
-    else {
-        cmds << zwave.basicV1.basicSet(value: 0).format()
-        sendEvent(name: "windowShade", value: invert ? "opening": "closing", isStateChange: true)
-    }
-    log.debug("close: ${cmds}")
+    cmds << zwave.basicV1.basicSet(value: 0).format()
+    log.debug("send CMD: ${cmds}")
     return delayBetween(cmds, 500)
 }
 
