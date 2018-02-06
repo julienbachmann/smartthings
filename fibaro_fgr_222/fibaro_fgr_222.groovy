@@ -147,6 +147,17 @@ def createWindowShadeEvent(value) {
     return createEvent(name: "windowShade", value: theWindowShade, isStateChange: true)
 }
 
+def createSwitchEvent(value) {
+    def switchValue = "on"
+    if (value >= (openOffset ?: 95)) {
+        switchValue = "on"
+    }
+    if (value <= (closeOffset ?: 5)) {
+        switchValue = "off"
+    }
+    return createEvent(name: "switch", value: switchValue)
+}
+
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
     logger.debug("basic report ${cmd}")
     def result = []
@@ -154,6 +165,7 @@ def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
         def level = correctLevel(cmd.value)
         result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
         result << createWindowShadeEvent(level)
+        result << createSwitchEvent(level)        
     }
     return result
 }
@@ -165,6 +177,7 @@ def zwaveEvent(physicalgraph.zwave.commands.switchmultilevelv3.SwitchMultilevelR
         def level = correctLevel(cmd.value)
         result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
         result << createWindowShadeEvent(level)
+        result << createSwitchEvent(level)                
     }
     return result
 }
@@ -215,6 +228,7 @@ def open() {
     def currentWindowShade = device.currentValue('windowShade')
     if (currentWindowShade == "opening" || currentWindowShade == "closing") {
         sendEvent(name: "windowShade", value: "partially open")
+        sendEvent(name: "switch", value: "on")        
         return stop()        
     }
     sendEvent(name: "windowShade", value: "opening")
@@ -231,6 +245,7 @@ def close() {
     def currentWindowShade = device.currentValue('windowShade')
     if (currentWindowShade == "opening" || currentWindowShade == "closing") {
         sendEvent(name: "windowShade", value: "partially open")
+        sendEvent(name: "switch", value: "on")                
         return stop()        
     }    
     sendEvent(name: "windowShade", value: "closing")    
