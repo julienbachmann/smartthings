@@ -144,7 +144,7 @@ def createWindowShadeEvent(value) {
     if (value <= (closeOffset ?: 5)) {
         theWindowShade = "closed"
     }
-    return createEvent(name: "windowShade", value: theWindowShade, isStateChange: true)
+    return createEvent(name: "windowShade", value: theWindowShade)
 }
 
 def createSwitchEvent(value) {
@@ -163,7 +163,7 @@ def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
     def result = []
     if (cmd.value != null) {
         def level = correctLevel(cmd.value)
-        result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
+        result << createEvent(name: "level", value: level, unit: "%")
         result << createWindowShadeEvent(level)
         result << createSwitchEvent(level)        
     }
@@ -175,7 +175,7 @@ def zwaveEvent(physicalgraph.zwave.commands.switchmultilevelv3.SwitchMultilevelR
     def result = []
     if (cmd.value != null) {
         def level = correctLevel(cmd.value)
-        result << createEvent(name: "level", value: level, unit: "%", isStateChange: true)
+        result << createEvent(name: "level", value: level, unit: "%")
         result << createWindowShadeEvent(level)
         result << createSwitchEvent(level)                
     }
