@@ -292,7 +292,13 @@ def refresh() {
 ], 500)
 }
 
-def setLevel(level) {
+def setLevel(requestedLevel) {
+    if (!requestedLevel?.isInteger()) {
+    	debug.log ("Cannot convert ${requestedLevel} to int")
+        return
+    }
+    int level = requestedLevel as int
+
     if (invert) {
         level = 100 - level
     }
