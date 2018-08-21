@@ -299,6 +299,12 @@ def setLevel(requestedLevel) {
     }
     int level = requestedLevel as int
 
+    int currentLevel = device.currentValue("level") as int
+    if (currentLevel == level) { //nothing to do
+        log.debug ("level is already ${level} - nothing to do :^)")
+        return;
+    }
+
     if (invert) {
         level = 100 - level
     }
