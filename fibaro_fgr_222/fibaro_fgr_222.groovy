@@ -226,6 +226,11 @@ def stop() {
 def open() {
     logger.debug("open")
     def currentWindowShade = device.currentValue('windowShade')
+    if (currentWindowShade == "open") {
+        logger.debug("already open - nothing to do")
+		return
+    }
+    
     if (currentWindowShade == "opening" || currentWindowShade == "closing") {
         sendEvent(name: "windowShade", value: "partially open")
         sendEvent(name: "switch", value: "on")        
@@ -243,6 +248,11 @@ def open() {
 def close() {
     logger.debug("close")
     def currentWindowShade = device.currentValue('windowShade')
+    if (currentWindowShade == "closed") {
+        logger.debug("already closed - nothing to do")
+		return
+    }
+
     if (currentWindowShade == "opening" || currentWindowShade == "closing") {
         sendEvent(name: "windowShade", value: "partially open")
         sendEvent(name: "switch", value: "on")                
