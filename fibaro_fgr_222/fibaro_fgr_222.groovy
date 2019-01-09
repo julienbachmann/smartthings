@@ -17,6 +17,8 @@ metadata {
 
         command "sync"
         command "stop"        
+        command "up"   
+        command "down"   
 
         fingerprint inClusters: "0x26,0x32"
     }
@@ -47,10 +49,10 @@ metadata {
             state "default", action:"configure", label:"Calibrate", backgroundColor:"#0000a8"
         }
         standardTile(name: "up", width: 2, height: 2, decoration: "flat") {
-            state "default", action:"open", icon:"https://raw.githubusercontent.com/julienbachmann/smartthings/master/fibaro_fgr_222/up.png?v=3"
+            state "default", action:"up", icon:"https://raw.githubusercontent.com/julienbachmann/smartthings/master/fibaro_fgr_222/up.png?v=3"
         }
         standardTile(name: "down", width: 2, height: 2, decoration: "flat") {
-            state "default", action:"close", icon:"https://raw.githubusercontent.com/julienbachmann/smartthings/master/fibaro_fgr_222/down.png?v=3"
+            state "default", action:"down", icon:"https://raw.githubusercontent.com/julienbachmann/smartthings/master/fibaro_fgr_222/down.png?v=3"
         }
         standardTile("sync", "device.syncStatus", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
             state "default", action:"sync" , label:"Sync", backgroundColor:"#00a800"
@@ -163,10 +165,12 @@ def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
     def result = []
     if (cmd.value != null) {
         def level = correctLevel(cmd.value)
-        result << createEvent(name: "level", value: level, unit: "%")
-        result << createWindowShadeEvent(level)
-        result << createSwitchEvent(level)        
+        result << createEvent(name: "level", value: level, unit: "%")  
+        if (device.currentValue('windowShade') == "opening" || device.currentValue('windowShade') == "closing") {
+        	result << response([zwave.meterV2.meterGet(scale: 2).format()])
+        }
     }
+    log.debug("basic result ${result}")
     return result
 }
 
@@ -175,10 +179,15 @@ def zwaveEvent(physicalgraph.zwave.commands.switchmultilevelv3.SwitchMultilevelR
     def result = []
     if (cmd.value != null) {
         def level = correctLevel(cmd.value)
-        result << createEvent(name: "level", value: level, unit: "%")
-        result << createWindowShadeEvent(level)
-        result << createSwitchEvent(level)                
+        result << createEvent(name: "level", value: level, unit: "%")   
+        if (device.currentValue('windowShade') == "opening" || device.currentValue('windowShade') == "closing") {
+        	result << response([zwave.meterV2.meterGet(scale: 2).format()])
+        }
+        else {
+            result << createWindowShadeEvent(level) 
+        }
     }
+    log.debug("switch result ${result}")
     return result
 }
 
@@ -188,12 +197,18 @@ def zwaveEvent(physicalgraph.zwave.Command cmd) {
 
 def zwaveEvent(physicalgraph.zwave.commands.meterv3.MeterReport cmd) {
     if (cmd.meterType == 1) {
-        if (cmd.scale == 0) {
-            return createEvent(name: "energy", value: cmd.scaledMeterValue, unit: "kWh")
-        } else if (cmd.scale == 1) {
-            return createEvent(name: "energy", value: cmd.scaledMeterValue, unit: "kVAh")
-        } else if (cmd.scale == 2) {
-            return createEvent(name: "power", value: Math.round(cmd.scaledMeterValue), unit: "W")
+        if (cmd.scale == 2) {
+            def result = []
+            result << createEvent(name: "power", value: Math.round(cmd.scaledMeterValue), unit: "W")
+            if (cmd.scaledMeterValue < 1.0) {
+              result << createWindowShadeEvent(device.currentValue('level'))
+              result << response(["delay 500", zwave.switchMultilevelV3.switchMultilevelGet().format()])
+            }
+            else {
+              result << response(["delay 2000", zwave.switchMultilevelV3.switchMultilevelGet().format()])
+            }
+            log.debug("power result ${result}")
+            return result
         } else {
             return createEvent(name: "electric", value: cmd.scaledMeterValue, unit: ["pulses", "V", "A", "R/Z", ""][cmd.scale - 3])
         }
@@ -220,17 +235,28 @@ def stop() {
     def cmds = []
     logger.debug("stop")
 	cmds << zwave.switchMultilevelV1.switchMultilevelStopLevelChange().format()
-    return delayBetween(cmds, 500)
+    cmds << zwave.switchMultilevelV3.switchMultilevelGet().format()
+    return delayBetween(cmds, 2000)
+}
+
+def up() {
+    def currentWindowShade = device.currentValue('windowShade')
+    if (currentWindowShade == "opening" || currentWindowShade == "closing") {      
+        return stop()        
+    }
+    return open()
+}
+
+def down() {
+    def currentWindowShade = device.currentValue('windowShade')
+    if (currentWindowShade == "opening" || currentWindowShade == "closing") {
+        return stop()        
+    }
+    return close()
 }
 
 def open() {
     logger.debug("open")
-    def currentWindowShade = device.currentValue('windowShade')
-    if (currentWindowShade == "opening" || currentWindowShade == "closing") {
-        sendEvent(name: "windowShade", value: "partially open")
-        sendEvent(name: "switch", value: "on")        
-        return stop()        
-    }
     sendEvent(name: "windowShade", value: "opening")
     if (invert) {
         return privateClose()
@@ -242,12 +268,6 @@ def open() {
 
 def close() {
     logger.debug("close")
-    def currentWindowShade = device.currentValue('windowShade')
-    if (currentWindowShade == "opening" || currentWindowShade == "closing") {
-        sendEvent(name: "windowShade", value: "partially open")
-        sendEvent(name: "switch", value: "on")                
-        return stop()        
-    }    
     sendEvent(name: "windowShade", value: "closing")    
     if (invert) {
         return privateOpen()
@@ -260,15 +280,17 @@ def close() {
 def privateOpen() {
     def cmds = []
     cmds << zwave.basicV1.basicSet(value: 0xFF).format()
+    cmds << zwave.switchMultilevelV3.switchMultilevelGet().format()
     log.debug("send CMD: ${cmds}")
-    return delayBetween(cmds, 500)
+    return delayBetween(cmds, 2000)
 }
 
 def privateClose() {
     def cmds = []
     cmds << zwave.basicV1.basicSet(value: 0).format()
+    cmds << zwave.switchMultilevelV3.switchMultilevelGet().format()
     log.debug("send CMD: ${cmds}")
-    return delayBetween(cmds, 500)
+    return delayBetween(cmds, 2000)
 }
 
 def presetPosition() {
@@ -285,9 +307,7 @@ def poll() {
 def refresh() {
     log.debug("refresh")
     delayBetween([
-        zwave.switchBinaryV1.switchBinaryGet().format(),
         zwave.switchMultilevelV3.switchMultilevelGet().format(),
-        zwave.meterV2.meterGet(scale: 0).format(),
         zwave.meterV2.meterGet(scale: 2).format(),
 ], 500)
 }
