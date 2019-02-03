@@ -1,5 +1,5 @@
 # Fibaro FGR 222
-Smartthings device handler for Fibaro roller shutter 2.
+Smartthings device handler for Fibaro roller shutter 2. Unfortunatly this device handler does not work for roller shutter 3.
 
 # Installation
 From your smartthings IDE (http://ide.smartthings.com), create a new Device Hanlder and paste this code in `From code` tab.
