@@ -169,6 +169,9 @@ def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
         if (device.currentValue('windowShade') == "opening" || device.currentValue('windowShade') == "closing") {
         	result << response([zwave.meterV2.meterGet(scale: 2).format()])
         }
+        else {
+            result << createWindowShadeEvent(level) 
+        }        
     }
     log.debug("basic result ${result}")
     return result
